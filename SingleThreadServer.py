@@ -3,6 +3,40 @@ from utils import *
 import os
 import time
 
+
+def parse_headers(request):
+    headers = {}
+
+    return headers
+
+def get_headers(status, body):
+    headers = "HTTP/1.1" + status + "\r\n"
+    headers += "Content-Type: text/html\r\n"
+    headers += "Content-Length: " + str(len(body)) + "\r\n"
+
+    return headers
+
+def construct_http_packet(status, body = ""):
+    headers = get_headers(status, body)
+    response = headers + "\r\n" + body
+
+    print("Responding with: " + status)
+    return response
+
+def get_file(path):
+    path = path[1:] # remove the leading slash
+    if os.path.exists(path):
+        f = open(path, "r")
+        file = f.read()
+        f.close()
+        return file
+    else:
+        return None
+
+def is_modified_since(headers, path):
+    return False
+
+
 # SETUP SERVER
 serverName = 'localhost'
 serverPort = 12000
@@ -13,33 +47,27 @@ serverSocket.listen(1)
 print('Listening on port', serverPort)
 while True:
         connectionSocket, addr = serverSocket.accept()
-        # get path from request
+        request = connectionSocket.recv(1024).decode()
         try:
-                request = connectionSocket.recv(1024).decode()
                 request_words = request.split()
                 method = request_words[0]
                 path = request_words[1]
-                file_name = path[1:]
                 print("Handling " + method + " request on path " + path)
                 
                 if method == 'GET':
                         # parse headers
-                        headers = parse_headers(request)
-                        # get If-Modified-Since header
-                        modified_since = 0
-                        for header in headers:
-                                if header[0] == "If-Modified-Since":
-                                        modified_since = header[1]
-                                        # TODO: parse date
-                                        break
-                        response = get_file(path, modified_since) 
+                        response_body = get_file(path)
+                        if response_body:
+                            response = construct_http_packet("200 OK", response_body)
+                        else: 
+                            response = construct_http_packet("404 Not Found", "<h1>404 Not Found</h1>")
                 else:
-                        response = get_headers("405 Method Not Allowed")
+                        response = construct_http_packet("405 Method Not Allowed")
                         
                 connectionSocket.send(response.encode())
         except Exception as e:
                 print(e)
-                response = get_headers("500 Internal Server Error")
+                response = construct_http_packet("500 Internal Server Error")
         
         connectionSocket.close()
 
