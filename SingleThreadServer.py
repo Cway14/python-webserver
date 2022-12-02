@@ -42,7 +42,6 @@ def get_file(path):
         f = open(path, "r")
         file = f.read()
         f.close()
-        time.sleep(5)
         return file
     else:
         raise NotFound
@@ -66,62 +65,69 @@ def is_modified_since(headers, path):
 
     return True
 
-def timout_handler(signum, frame):
+def handle_request(request):
+    request_words = request.split()
+    request_lines = request.splitlines()
+    method = request_words[0]
+    path = request_words[1]
+    print("Handling " + method + " request on path " + path)
+
+    if method == 'GET':
+            headers = parse_headers(request_lines[1:])
+            if is_modified_since(headers, path):
+                response_body = get_file(path)
+                response = construct_http_packet("200 OK", response_body)
+            else:
+                response = construct_http_packet("304 Not Modified")
+    else:
+           raise NotAllowed
+    return response
+
+def timeout_handler(signum, frame):
     raise Timeout
 
-# SETUP SERVER
-serverName = 'localhost'
-serverPort = 12000
-timeout = 1
-serverSocket = socket(AF_INET, SOCK_STREAM)
-serverSocket.bind((serverName, serverPort))
+try:
+    # SETUP SERVER
+    serverName = 'localhost'
+    serverPort = 12000
+    timeout = 2
+    serverSocket = socket(AF_INET, SOCK_STREAM)
+    serverSocket.bind((serverName, serverPort))
+    serverSocket.settimeout(10)
+    serverSocket.listen(1)
+    serverSocket.settimeout(None)
+    print('Listening on port', serverPort)
+    signal.signal(signal.SIGALRM, timeout_handler)
 
-serverSocket.listen(1)
-print('Listening on port', serverPort)
-
-# register timeout handler
-signal.signal(signal.SIGALRM, timout_handler)
-
-while True:
-    connectionSocket, addr = serverSocket.accept()
-    request = connectionSocket.recv(1024).decode()
-    signal.alarm(timeout)
-        
-    try:
-            request_words = request.split()
-            request_lines = request.splitlines()
-            method = request_words[0]
-            path = request_words[1]
-            print("Handling " + method + " request on path " + path)
+    while True:
+        connectionSocket, addr = serverSocket.accept()
             
-            if method == 'GET':
-                    headers = parse_headers(request_lines[1:])
-                    if is_modified_since(headers, path):
-                        response_body = get_file(path)
-                        response = construct_http_packet("200 OK", response_body)
-                    else:
-                        response = construct_http_packet("304 Not Modified")
-            else:
-                   raise NotAllowed
-
-    except NotAllowed:
-            response = construct_http_packet("405 Method Not Allowed")
-    except NotFound:
-            response = construct_http_packet("404 Not Found", "<h1>404 Not Found</h1>")
-    except Timeout:
-            response = construct_http_packet("408 Request Timeout")
-    except Exception as e:
-            print(e)
-            response = construct_http_packet("500 Internal Server Error")
-   
-    print("Responding with status code " + response.split()[1])
-    connectionSocket.send(response.encode())
-    connectionSocket.close()
-
+        try:
+            signal.alarm(timeout) # set timeout
+            request = connectionSocket.recv(1024).decode()
+            response = handle_request(request)
+            signal.alarm(0) # cancel alarm
+        except NotAllowed:
+                response = construct_http_packet("405 Method Not Allowed")
+        except NotFound:
+                response = construct_http_packet("404 Not Found", "<h1>404 Not Found</h1>")
+        except Timeout:
+                response = construct_http_packet("408 Request Timeout")
+        except Exception as e:
+                print(e)
+                response = construct_http_packet("500 Internal Server Error")
+       
+        print("Responding with status code " + response.split()[1])
+        connectionSocket.send(response.encode())
+        connectionSocket.close()
+except KeyboardInterrupt:
+    print("Shutting down server...")
+    serverSocket.close()
+    exit()
 
 ### TODO
 #[X] 200 	OK
 #[X] 304 	Not Modified
 #[X] 400 	Bad request
 #[X] 404 	Not Found
-#[] 408 	Request Timed Out
+#[X] 408 	Request Timed Out
