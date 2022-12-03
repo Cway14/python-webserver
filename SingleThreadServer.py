@@ -11,6 +11,18 @@ class NotFound(Exception): pass
 class NotAllowed(Exception): pass
 class Timeout(Exception): pass
 
+# define constants
+HOST = 'localhost'
+PORT = 12000
+TIMEOUT = 2
+
+
+# define timeout handler 
+def timeout_handler(signum, frame):
+    raise Timeout
+
+signal.signal(signal.SIGALRM, timeout_handler)
+
 def parse_headers(request):
     try:
         headers = {}
@@ -83,30 +95,12 @@ def handle_request(request):
            raise NotAllowed
     return response
 
-def timeout_handler(signum, frame):
-    raise Timeout
-
-try:
-    # SETUP SERVER
-    serverName = 'localhost'
-    serverPort = 12000
-    timeout = 2
-    serverSocket = socket(AF_INET, SOCK_STREAM)
-    serverSocket.bind((serverName, serverPort))
-    serverSocket.settimeout(10)
-    serverSocket.listen(1)
-    serverSocket.settimeout(None)
-    print('Listening on port', serverPort)
-    signal.signal(signal.SIGALRM, timeout_handler)
-
-    while True:
-        connectionSocket, addr = serverSocket.accept()
-            
+def handle_new_connection(connectionSocket):
         try:
-            signal.alarm(timeout) # set timeout
+            signal.alarm(TIMEOUT) # set timeout
             request = connectionSocket.recv(1024).decode()
             response = handle_request(request)
-            signal.alarm(0) # cancel alarm
+            signal.alarm(0) # cancel timeout 
         except NotAllowed:
                 response = construct_http_packet("405 Method Not Allowed")
         except NotFound:
@@ -120,11 +114,28 @@ try:
         print("Responding with status code " + response.split()[1])
         connectionSocket.send(response.encode())
         connectionSocket.close()
-except KeyboardInterrupt:
-    print("Shutting down server...")
-    serverSocket.close()
-    exit()
 
+def main():
+    try:
+        # SETUP SERVER
+
+        serverSocket = socket(AF_INET, SOCK_STREAM)
+        serverSocket.bind((HOST, PORT))
+        serverSocket.listen(1)
+        print('Listening on port', PORT)
+
+
+        while True:
+            connectionSocket, addr = serverSocket.accept()
+            handle_new_connection(connectionSocket)
+    except KeyboardInterrupt:
+        print("Shutting down server...")
+        serverSocket.close()
+        exit()
+
+if __name__ == "__main__":
+    main()
+    
 ### TODO
 #[X] 200 	OK
 #[X] 304 	Not Modified
