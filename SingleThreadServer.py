@@ -39,7 +39,7 @@ def handle_request(request):
     method = request_words[0]
     path = request_words[1]
     path = path[1:] # remove the leading slash
-    print("Handling " + method + " request on path " + path)
+    log("Handling " + method + " request on path " + path)
 
     if method not in ['GET', 'HEAD']:
         raise NotAllowed
@@ -76,7 +76,7 @@ def handle_new_connection(connectionSocket):
                 response = construct_http_response("500 Internal Server Error")
        
         signal.alarm(0) # cancel timeout 
-        print("Responding with status code " + response.split()[1])
+        log("Responding with status code " + response.split()[1] + "\n")
         connectionSocket.send(response.encode())
         connectionSocket.close()
 
