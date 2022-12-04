@@ -10,8 +10,12 @@ class Timeout(Exception): pass
 def log(message):
     print("LOG - " + message)
 
-def construct_http_request(method, path):
+def construct_http_request(method, path, additional_headers = {}):
     request = method + " " + path + " HTTP/1.1\r\n"
+
+    for key, value in additional_headers.items():
+        request += key + ": " + str(value) + "\r\n"
+
     request += "\r\n"
 
     return request
@@ -60,4 +64,4 @@ def get_mtime(path):
         raise NotFound
         
 def from_timestamp_to_http_date(timestamp):
-    return datetime.fromtimestamp(timestamp).strftime("%a, %d %b %Y %H:%M:%S %Z")
+    return datetime.fromtimestamp(timestamp).strftime("%a, %d %b %Y %H:%M:%S")

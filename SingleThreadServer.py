@@ -24,10 +24,10 @@ def is_modified_since(headers, path):
         mtime = os.path.getmtime(path)
 
         # convert headerTime to datetime object
-        headerTime = datetime.strptime(headerTime, "%a, %d %b %Y %H:%M:%S %Z")
-        mtime = datetime.fromtimestamp(mtime)
+        headerTime = datetime.strptime(headerTime, "%a, %d %b %Y %H:%M:%S")
+        mtime = datetime.fromtimestamp(mtime).replace(microsecond=0)
 
-        if mtime < headerTime:
+        if mtime == headerTime:
             return False
 
     return True
