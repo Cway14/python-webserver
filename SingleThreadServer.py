@@ -4,19 +4,20 @@ import os
 from datetime import datetime
 import signal
 from utils import *
+import time
 
 # define constants
-HOST = 'localhost'
-PORT = 12000
-TIMEOUT = 5 #seconds
+HOST = get_local_ip()
+PORT = 80
+TIMEOUT = 10 #seconds
 
 # define timeout handler 
 def timeout_handler(signum, frame):
     raise Timeout
 
 # checks if requested file has been modified since the last time it was requested
-# return True if it has been modified, False otherwise
-# returns True if If-Modified-Since header is not present
+# return True if it has been modified or If-Modified-Since header is not present, False otherwise
+# (true if file should be sent to client)
 def is_modified_since(headers, path):
     if "If-Modified-Since" in headers:
         headerTime = headers["If-Modified-Since"]
@@ -27,7 +28,7 @@ def is_modified_since(headers, path):
         headerTime = datetime.strptime(headerTime, "%a, %d %b %Y %H:%M:%S")
         mtime = datetime.fromtimestamp(mtime).replace(microsecond=0)
 
-        if mtime == headerTime:
+        if mtime <= headerTime: 
             return False
 
     return True
@@ -38,10 +39,18 @@ def handle_request(request):
 
     method = request_words[0]
     path = request_words[1]
-    path = path[1:] # remove the leading slash
     log("Handling " + method + " request on path " + path)
+    path = path[1:] # remove the leading slash
 
-    if method not in ['GET', 'HEAD']:
+    if path == "largeTest.html":
+        time.sleep(2) # simulate a long request
+        path = "test.html"
+    
+    if path == "timeoutTest.html":
+        time.sleep(20) # simulate a request that times out
+        path = "test.html"
+
+    if method != "GET":
         raise NotAllowed
 
     headers = parse_headers(request_lines[1:])
@@ -49,8 +58,6 @@ def handle_request(request):
     mtime = get_mtime(path)
     additional_headers = {"Last-Modified": from_timestamp_to_http_date(mtime)}
     
-    if method == "HEAD":
-        return construct_http_response("200 OK", additional_headers = additional_headers)
     
     if is_modified_since(headers, path):
         response_body = get_file(path)
@@ -60,25 +67,27 @@ def handle_request(request):
 
     return response
 
-def handle_new_connection(connectionSocket):
-        try:
-            signal.alarm(TIMEOUT) # set timeout
-            request = connectionSocket.recv(1024).decode()
-            response = handle_request(request)
-        except NotAllowed:
-                response = construct_http_response("405 Method Not Allowed")
-        except NotFound:
-                response = construct_http_response("404 Not Found", "<h1>404 Not Found</h1>")
-        except Timeout:
-                response = construct_http_response("408 Request Timeout")
-        except Exception as e:
-                print(e)
-                response = construct_http_response("500 Internal Server Error")
-       
-        signal.alarm(0) # cancel timeout 
-        log("Responding with status code " + response.split()[1] + "\n")
-        connectionSocket.send(response.encode())
-        connectionSocket.close()
+def handle_new_connection(connectionSocket, address):
+    try:
+        signal.alarm(TIMEOUT) # set timeout
+        request = connectionSocket.recv(1024).decode()
+        response = handle_request(request)
+    except NotAllowed:
+        response = construct_http_response("405 Method Not Allowed")
+    except NotFound:
+        response = construct_http_response("404 Not Found", "<h1>404 Not Found</h1>")
+    except Timeout:
+        response = construct_http_response("408 Request Timeout")
+    except BadRequest:
+        response = construct_http_response("400 Bad Request")
+    except Exception as e:
+        error(e)
+        response = construct_http_response("500 Internal Server Error")
+    
+    signal.alarm(0) # cancel timeout 
+    log("Responding with status code " + response.split()[1])
+    connectionSocket.send(response.encode())
+    connectionSocket.close()
 
 def main():
     try:
@@ -89,16 +98,18 @@ def main():
         serverSocket = socket(AF_INET, SOCK_STREAM)
         serverSocket.bind((HOST, PORT))
         serverSocket.listen(1)
-        print('Listening on port', PORT)
+        print(f'Listening on {HOST}, port {PORT}')
 
 
         while True:
             connectionSocket, addr = serverSocket.accept()
-            handle_new_connection(connectionSocket)
+            handle_new_connection(connectionSocket, addr)
     except KeyboardInterrupt:
         print("Shutting down server...")
         serverSocket.close()
         exit()
+    except BrokenPipeError:
+        print("Client closed connection")
 
 if __name__ == "__main__":
     main()

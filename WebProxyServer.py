@@ -2,10 +2,10 @@
 # will send If-Modified-Since header to the server
 from socket import *
 from SingleThreadServer import HOST as serverHost, PORT as serverPort
-from utils import log, construct_http_request, parse_headers, construct_http_response
+from utils import log, construct_http_request, parse_headers, construct_http_response, error
 
-HOST = serverHost
-PORT = serverPort + 1
+HOST = "localhost"
+PORT = 12000
 
 # define constants
 files = {}
@@ -57,6 +57,7 @@ def handle_new_connection(connectionSocket):
         request_words = request.split()
         path = request_words[1]
         method = request_words[0]
+
         log("Handling " + method + " request on path " + path)
         
         # check if file is in memory
@@ -67,11 +68,10 @@ def handle_new_connection(connectionSocket):
 
         else: # file is not in memory
             log("File is not memory")
-
             response = request_file_and_store(path)
 
     except Exception as e:
-        print(e)
+        error(e)
         response = construct_http_response("500 Internal Server Error")
 
     log("Sending response to client\n")
@@ -84,7 +84,7 @@ def start_web_proxy_server():
         serverSocket = socket(AF_INET, SOCK_STREAM)
         serverSocket.bind((HOST, PORT))
         serverSocket.listen(1)
-        print('Listening on port', PORT)
+        print(f'Listening on {HOST}, port {PORT}')
 
         while True:
             connectionSocket, addr = serverSocket.accept()
